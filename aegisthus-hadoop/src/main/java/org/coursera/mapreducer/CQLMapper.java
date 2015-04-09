@@ -157,6 +157,8 @@ public class CQLMapper extends Mapper<AegisthusKey, AtomWritable, AvroKey<Generi
         if (name.type instanceof ListType) {
             AbstractType elementType = ((ListType) name.type).elements;
             List<?> list = (List<?>) ListType.getInstance(elementType).compose(buffer);
+
+            // this function to avoid to allocate a copy of collection if not necessary
             if (needTransformRecord(elementType)) {
                 List<Object> resultList = new ArrayList(list.size());
                 for (Object value: list) {
@@ -232,13 +234,8 @@ public class CQLMapper extends Mapper<AegisthusKey, AtomWritable, AvroKey<Generi
 
         AbstractType<?> type = name.type;
         Object valueDeserialized = type.compose(value);
-
-        AbstractType<?> baseType = (type instanceof ReversedType<?>)
-                ? ((ReversedType<?>) type).baseType
-                : type;
-
-        valueDeserialized = transformValue(baseType, valueDeserialized);
-        // LOG.info("Setting {} type {} to class {}", name.name.toString(), type, valueDeserialized.getClass());
+        valueDeserialized = transformValue(type, valueDeserialized);
+        //LOG.info("Setting {} type {} to class {}", name.name.toString(), type, valueDeserialized.getClass());
 
         record.put(name.name.toString(), valueDeserialized);
     }
