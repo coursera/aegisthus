@@ -145,7 +145,11 @@ public class CQLMapper extends Mapper<AegisthusKey, AtomWritable, AvroKey<Generi
     private void addValue(GenericRecord record, CFDefinition.Name name, ColumnGroupMap group) {
         if (name.type.isCollection()) {
             List<Pair<ByteBuffer, Column>> collection = group.getCollection(name.name.key);
-            ByteBuffer buffer = ((CollectionType)name.type).serialize(collection);
+            ByteBuffer buffer = null;
+            if (collection != null) {
+                buffer = ((CollectionType)name.type).serialize(collection);
+            }
+
             addCqlCollectionToRecord(record, name, buffer);
         } else {
             Column c = group.getSimple(name.name.key);
@@ -154,6 +158,11 @@ public class CQLMapper extends Mapper<AegisthusKey, AtomWritable, AvroKey<Generi
     }
 
     private void addCqlCollectionToRecord(GenericRecord record, CFDefinition.Name name, ByteBuffer buffer) {
+        if (buffer == null) {
+            record.put(name.name.toString(), null);
+            return;
+        }
+
         if (name.type instanceof ListType) {
             AbstractType elementType = ((ListType) name.type).elements;
             List<?> list = (List<?>) ListType.getInstance(elementType).compose(buffer);
