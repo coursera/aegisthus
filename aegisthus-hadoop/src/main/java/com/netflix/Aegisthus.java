@@ -46,6 +46,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.mapreduce.Counter;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.util.Tool;
@@ -63,8 +64,6 @@ import java.util.jar.Manifest;
 
 public class Aegisthus extends Configured implements Tool {
     private static final Logger LOG = LoggerFactory.getLogger(Aegisthus.class);
-
-    private Descriptor.Version version;
 
     private static void logAegisthusVersion() {
         String classPath = Aegisthus.class.getResource("Aegisthus.class").toString();
@@ -100,18 +99,6 @@ public class Aegisthus extends Configured implements Tool {
         }
     }
 
-    private void checkVersionFromFilename(String filename) {
-        Descriptor descriptor = Descriptor.fromFilename(filename);
-
-        if (this.version == null) {
-            this.version = descriptor.version;
-        } else if (!this.version.equals(descriptor.version)) {
-            throw new IllegalStateException("All files must have the same sstable version.  File '" + filename
-                    + "' has version '" + descriptor.version + "' and we have already seen a file with version '"
-                    + version + "'");
-        }
-    }
-
     private void setConfigurationFromCql(Configuration conf) {
         CFMetaData cfMetaData = CFMetadataUtility.initializeCfMetaData(conf);
         String keyType = cfMetaData.getKeyValidator().toString();
@@ -131,7 +118,6 @@ public class Aegisthus extends Configured implements Tool {
         List<FileStatus> input = Lists.newArrayList(fs.listStatus(dirPath));
         for (String path : DirectoryWalker.with(conf).threaded().addAllStatuses(input).pathsString()) {
             if (path.endsWith("-Data.db")) {
-                checkVersionFromFilename(path);
                 globs.add(path.replaceAll("[^/]+-Data.db", "*-Data.db"));
             }
         }
@@ -160,6 +146,12 @@ public class Aegisthus extends Configured implements Tool {
         opts.addOption(OptionBuilder.withArgName(Feature.CMD_ARG_PRODUCE_SSTABLE)
                 .withDescription("produces sstable output (default is to produce json)")
                 .create(Feature.CMD_ARG_PRODUCE_SSTABLE));
+        opts.addOption(OptionBuilder.withArgName(Feature.CMD_ARG_SSTABLE_OUTPUT_VERSION)
+                .withDescription("version of sstable to produce (default is to produce " +
+                        Descriptor.Version.current_version
+                        + ")")
+                .hasArg()
+                .create(Feature.CMD_ARG_SSTABLE_OUTPUT_VERSION));
         CommandLineParser parser = new GnuParser();
 
         try {
@@ -193,7 +185,6 @@ public class Aegisthus extends Configured implements Tool {
         List<Path> paths = Lists.newArrayList();
         if (cl.hasOption(Feature.CMD_ARG_INPUT_FILE)) {
             for (String input : cl.getOptionValues(Feature.CMD_ARG_INPUT_FILE)) {
-                checkVersionFromFilename(input);
                 paths.add(new Path(input));
             }
         }
@@ -202,6 +193,10 @@ public class Aegisthus extends Configured implements Tool {
         }
 
         // At this point we have the version of sstable that we can use for this run
+        Descriptor.Version version = Descriptor.Version.CURRENT;
+        if (cl.hasOption(Feature.CMD_ARG_SSTABLE_OUTPUT_VERSION)) {
+            version = new Descriptor.Version(cl.getOptionValue(Feature.CMD_ARG_SSTABLE_OUTPUT_VERSION));
+        }
         job.getConfiguration().set(Feature.CONF_SSTABLE_VERSION, version.toString());
 
         if (job.getConfiguration().get(Feature.CONF_CQL_SCHEMA) != null) {
@@ -232,6 +227,20 @@ public class Aegisthus extends Configured implements Tool {
         System.out.println(job.getJobID());
         System.out.println(job.getTrackingURL());
         boolean success = job.waitForCompletion(true);
+
+        if (success) {
+            Counter errorCounter = job.getCounters().findCounter("aegisthus", "error_skipped_input");
+            long errorCount = errorCounter != null ? errorCounter.getValue() : 0L;
+            int maxAllowed = job.getConfiguration().getInt(Feature.CONF_MAX_CORRUPT_FILES_TO_SKIP, 0);
+            if (errorCounter != null && errorCounter.getValue() > maxAllowed) {
+                LOG.error("Found {} corrupt files which is greater than the max allowed {}", errorCount, maxAllowed);
+                success = false;
+            } else if (errorCount > 0) {
+                LOG.warn("Found {} corrupt files but not failing the job because the max allowed is {}",
+                        errorCount, maxAllowed);
+            }
+        }
+
         return success ? 0 : 1;
     }
 
@@ -240,6 +249,7 @@ public class Aegisthus extends Configured implements Tool {
         public static final String CMD_ARG_INPUT_FILE = "input";
         public static final String CMD_ARG_OUTPUT_DIR = "output";
         public static final String CMD_ARG_PRODUCE_SSTABLE = "produceSSTable";
+        public static final String CMD_ARG_SSTABLE_OUTPUT_VERSION = "sstable_output_version";
 
         /**
          * If set this is the blocksize aegisthus will use when splitting input files otherwise the hadoop vaule will
@@ -274,9 +284,9 @@ public class Aegisthus extends Configured implements Tool {
          */
         public static final String CONF_MAXCOLSIZE = "aegisthus.maxcolsize";
         /**
-         * Should aegisthus try to skip rows with errors.  Defaults to false.  (untested)
+         * The maximum number of corrupt files that Aegisthus can automatically skip.  Defaults to 0.
          */
-        public static final String CONF_SKIP_ROWS_WITH_ERRORS = "aegisthus.skip_rows_with_errors";
+        public static final String CONF_MAX_CORRUPT_FILES_TO_SKIP = "aegisthus.max_corrupt_files_to_skip";
         /**
          * Sort the columns by name rather than by the order in Cassandra.  This defaults to false.
          */
