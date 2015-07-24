@@ -175,6 +175,7 @@ public class SSTableExport extends Configured implements Tool {
         job.setMapperClass(CQLMapper.class);
         job.setOutputFormatClass(AvroKeyOutputFormat.class);
         AvroJob.setOutputKeySchema(job, avroSchema);
+        AvroKeyOutputFormat.setCompressOutput(job, true);
 
         // Map-only job
         job.setNumReduceTasks(0);
