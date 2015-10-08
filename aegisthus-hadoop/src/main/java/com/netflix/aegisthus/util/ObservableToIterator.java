@@ -9,12 +9,17 @@ import java.util.NoSuchElementException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Most of this code is borrowed from rx.internal.operators.BlockingOperatorToIterator, which sadly does not offer a way
  * to apply backpressure.
  */
 
 public class ObservableToIterator {
+    private static final Logger LOG = LoggerFactory.getLogger(ObservableToIterator.class);
+
     public static <T> Iterator<T> toIterator(Observable<? extends T> source) {
         return toIterator(source, 25);
     }
@@ -57,7 +62,9 @@ public class ObservableToIterator {
                     buf = take();
                 }
                 if (buf.isOnError()) {
-                    throw Exceptions.propagate(buf.getThrowable());
+                    // throw Exceptions.propagate(buf.getThrowable());
+                    LOG.error("Meet buffer error due to: ", buf.getThrowable());
+                    return false;
                 }
                 return !buf.isOnCompleted();
             }
