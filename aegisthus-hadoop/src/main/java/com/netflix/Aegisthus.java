@@ -112,6 +112,7 @@ public class Aegisthus extends Configured implements Tool {
 
     List<Path> getDataFiles(Configuration conf, String dir) throws IOException {
         Set<Path> globs = Sets.newHashSet();
+        Set<Path> compressedGlobs = Sets.newHashSet();
         Iterable<Path> paths = DirectoryWalker.with(conf)
                 .add(dir)
                 .recursive(true)
@@ -124,7 +125,19 @@ public class Aegisthus extends Configured implements Tool {
             if (pathName.endsWith("-Data.db")) {
                 Path outputPath = new Path(path.getParent(), pathName.replaceAll("[^/]+-Data.db", "*-Data.db"));
                 globs.add(outputPath);
+            } else if (pathName.endsWith("-CompressionInfo.db")) {
+                Path outputPath = new Path(path.getParent(),
+                    pathName.replaceAll("[^/]+-CompressionInfo.db", "*-Data.db"));
+                compressedGlobs.add(outputPath);
             }
+        }
+        if (conf.getBoolean(Feature.CONF_ENFORCE_COMPRESSION, false)) {
+            compressedGlobs.retainAll(globs);
+            globs.removeAll(compressedGlobs);
+            if (!globs.isEmpty()) {
+                LOG.warn("Ignoring paths due to lack of compression information: {}", globs);
+            }
+            return ImmutableList.copyOf(compressedGlobs);
         }
         return ImmutableList.copyOf(globs);
     }
@@ -315,6 +328,17 @@ public class Aegisthus extends Configured implements Tool {
          * The CQL "Create Table" statement that defines the schema of the input sstables.
          */
         public static final String CONF_CQL_SCHEMA = "aegisthus.cql_schema";
+        /**
+         * If true, then only processes data files that have corresponding compression info files. Defaults to false.
+         */
+        public static final String CONF_ENFORCE_COMPRESSION = "aegisthus.enforce_compression";
+
+        // Coursera-specific
+        /**
+         * If specified, then only processes AegisthusKeys that start with an entry in the whitelist.
+         * Assumes the data follows the convention in Coursera's KVS format; for use with older tables that
+         * contain multiple types of objects.
+         */
         public static final String CONF_KEY_WHITELIST = "aegisthus.key_whitelist";
     }
 }
