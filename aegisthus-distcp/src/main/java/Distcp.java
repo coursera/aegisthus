@@ -228,7 +228,7 @@ public class Distcp extends Configured implements Tool {
 		}
 	}
 
-	protected int setupInput(Job job, Path inputPath, String[] inputFiles, String manifestPath) throws IOException {
+	protected int setupInput(Job job, Path inputPath, String[] inputFiles, String manifestPath) throws Exception {
 		int size = 0;
 		if (manifestPath == null) {
 			LOG.info("Setting up input");
@@ -254,11 +254,7 @@ public class Distcp extends Configured implements Tool {
 				}));
 			}
 			for (Future<List<String>> inputFuture : inputFutures) {
-				try {
-					inputs.addAll(inputFuture.get());
-				} catch(Exception e) {
-					e.printStackTrace();
-				}
+				inputs.addAll(inputFuture.get());
 			}
 			executor.shutdown();
 
