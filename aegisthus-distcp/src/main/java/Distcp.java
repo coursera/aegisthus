@@ -5,6 +5,10 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -215,32 +219,47 @@ public class Distcp extends Configured implements Tool {
 	}
 
 	protected void setReducers(Job job, int fileCount) {
-		int reducers = job.getConfiguration().getInt("mapred.reduce.tasks", 1);
+		int reducers = job.getConfiguration().getInt("mapred.job.reduces", 1);
 		LOG.info(String.format("fileCount: %d - set reducers: %d", fileCount, reducers));
 		if (reducers == 1) {
-			job.getConfiguration().setInt("mapred.reduce.tasks", Math.min(fileCount, MAX_REDUCERS));
+			job.getConfiguration().setInt("mapred.job.reduces", Math.min(fileCount, MAX_REDUCERS));
 		} else {
-			job.getConfiguration().setInt("mapred.reduce.tasks", Math.min(fileCount, reducers));
+			job.getConfiguration().setInt("mapred.job.reduces", Math.min(fileCount, reducers));
 		}
 	}
 
-	protected int setupInput(Job job, Path inputPath, String[] inputFiles, String manifestPath) throws IOException {
+	protected int setupInput(Job job, Path inputPath, String[] inputFiles, String manifestPath) throws Exception {
 		int size = 0;
 		if (manifestPath == null) {
 			LOG.info("Setting up input");
-			FileSystem fs = inputPath.getFileSystem(job.getConfiguration());
+			final Configuration conf = job.getConfiguration();
+			FileSystem fs = inputPath.getFileSystem(conf);
 			DataOutputStream dos = fs.create(inputPath);
 
-			List<String> inputs = new ArrayList<>();
-			for (int i = 0; i < inputFiles.length; i++) {
-				Path path = new Path(cleanS3(inputFiles[i]));
-				FileStatus[] files = path.getFileSystem(job.getConfiguration()).globStatus(path);
-				for (int j = 0; j < files.length; j++) {
-					inputs.add(files[j].getPath().toString());
-				}
+			final List<String> inputs = new ArrayList<String>();
+			final ExecutorService executor = Executors.newFixedThreadPool(inputFiles.length);
+			final List<Future<List<String>>> inputFutures = new ArrayList<Future<List<String>>>();
+
+			for (String inputFile : inputFiles) {
+				final Path path = new Path(cleanS3(inputFile));
+				inputFutures.add(executor.submit(new Callable<List<String>>() {
+					public List<String> call() throws IOException {
+						FileStatus[] files = path.getFileSystem(conf).globStatus(path);
+						List<String> curInputs = new ArrayList<String>();
+						for (FileStatus file : files) {
+							curInputs.add(file.getPath().toString());
+						}
+						return curInputs;
+					}
+				}));
 			}
+			for (Future<List<String>> inputFuture : inputFutures) {
+				inputs.addAll(inputFuture.get());
+			}
+			executor.shutdown();
+
 			List<FileStatus> files = Lists.newArrayList(DirectoryWalker
-					.with(job.getConfiguration())
+					.with(conf)
 					.addAll(inputs)
 					.statuses());
 
