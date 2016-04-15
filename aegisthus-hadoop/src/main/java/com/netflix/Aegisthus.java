@@ -345,6 +345,8 @@ public class Aegisthus extends Configured implements Tool {
         /**
          * If positive, increases the number of reducers so that the average amount of input data per reducer is at
          * most the specified value.  Defaults to 0.  Only considers data files under the specified inputDir.
+         * Note that this computation is based on the raw input size, and so does not account for compression,
+         * skipping corrupted files, and the like; make sure to account for these when setting this value.
          */
         public static final String CONF_MAX_SIZE_PER_REDUCER = "aegisthus.max_size_per_reducer";
 
