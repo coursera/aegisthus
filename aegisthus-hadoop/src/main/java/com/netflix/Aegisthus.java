@@ -120,16 +120,24 @@ public class Aegisthus extends Configured implements Tool {
                 .manifest(false)
                 .threaded()
                 .paths();
+        long inputSize = 0;
         for (Path path : paths) {
             String pathName = path.getName();
             if (pathName.endsWith("-Data.db")) {
                 Path outputPath = new Path(path.getParent(), pathName.replaceAll("[^/]+-Data.db", "*-Data.db"));
                 globs.add(outputPath);
+                inputSize += path.getFileSystem(conf).getFileStatus(path).getLen();
             } else if (pathName.endsWith("-CompressionInfo.db")) {
                 Path outputPath = new Path(path.getParent(),
                     pathName.replaceAll("[^/]+-CompressionInfo.db", "*-Data.db"));
                 compressedGlobs.add(outputPath);
             }
+        }
+        LOG.info("Total size of input files: {}", inputSize);
+        long maxSizePerReducer = conf.getLong(Feature.CONF_MAX_SIZE_PER_REDUCER, 0);
+        int reduces = conf.getInt("mapred.job.reduces", 1);
+        if (maxSizePerReducer > 0) {
+            conf.setInt("mapred.job.reduces", Math.max((int) (1 + inputSize / maxSizePerReducer), reduces));
         }
         if (conf.getBoolean(Feature.CONF_ENFORCE_COMPRESSION, false)) {
             compressedGlobs.retainAll(globs);
@@ -206,6 +214,8 @@ public class Aegisthus extends Configured implements Tool {
         }
         if (cl.hasOption(Feature.CMD_ARG_INPUT_DIR)) {
             paths.addAll(getDataFiles(configuration, cl.getOptionValue(Feature.CMD_ARG_INPUT_DIR)));
+            // reset this because it may have changed
+            job.setNumReduceTasks(configuration.getInt("mapred.job.reduces", 1));
         }
         LOG.info("Processing paths: {}", paths);
 
@@ -332,6 +342,13 @@ public class Aegisthus extends Configured implements Tool {
          * If true, then only processes data files that have corresponding compression info files. Defaults to false.
          */
         public static final String CONF_ENFORCE_COMPRESSION = "aegisthus.enforce_compression";
+        /**
+         * If positive, increases the number of reducers so that the average amount of input data per reducer is at
+         * most the specified value.  Defaults to 0.  Only considers data files under the specified inputDir.
+         * Note that this computation is based on the raw input size, and so does not account for compression,
+         * skipping corrupted files, and the like; make sure to account for these when setting this value.
+         */
+        public static final String CONF_MAX_SIZE_PER_REDUCER = "aegisthus.max_size_per_reducer";
 
         // Coursera-specific
         /**
