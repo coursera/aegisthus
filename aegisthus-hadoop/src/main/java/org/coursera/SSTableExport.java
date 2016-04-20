@@ -105,10 +105,13 @@ public class SSTableExport extends Configured implements Tool {
                 .withDescription("a directory from which we will recursively pull sstables")
                 .hasArgs()
                 .create(Feature.CMD_ARG_INPUT_DIR));
+        opts.addOption(OptionBuilder.withArgName(Feature.CMD_ARG_AVRO_SCHEMA)
+                .withDescription("inline avro schema")
+                .hasArg()
+                .create(Feature.CMD_ARG_AVRO_SCHEMA));
         opts.addOption(OptionBuilder.withArgName(Feature.CMD_ARG_AVRO_SCHEMA_FILE)
                 .withDescription("location of avro schema")
-                .isRequired()
-                .hasArgs()
+                .hasArg()
                 .create(Feature.CMD_ARG_AVRO_SCHEMA_FILE));
         opts.addOption(OptionBuilder.withArgName(Feature.CMD_ARG_OUTPUT_DIR)
                 .isRequired()
@@ -121,6 +124,12 @@ public class SSTableExport extends Configured implements Tool {
             CommandLine cl = parser.parse(opts, args, true);
             if (!(cl.hasOption(Feature.CMD_ARG_INPUT_FILE) || cl.hasOption(Feature.CMD_ARG_INPUT_DIR))) {
                 System.out.println("Must have either an input or inputDir option");
+                HelpFormatter formatter = new HelpFormatter();
+                formatter.printHelp(String.format("hadoop jar aegisthus.jar %s", SSTableExport.class.getName()), opts);
+                return null;
+            }
+            if (!(cl.hasOption(Feature.CMD_ARG_AVRO_SCHEMA) ^ cl.hasOption(Feature.CMD_ARG_AVRO_SCHEMA_FILE))) {
+                System.out.println("Avro schema must be specified either directly or as a file (but not both)");
                 HelpFormatter formatter = new HelpFormatter();
                 formatter.printHelp(String.format("hadoop jar aegisthus.jar %s", SSTableExport.class.getName()), opts);
                 return null;
@@ -161,7 +170,13 @@ public class SSTableExport extends Configured implements Tool {
             paths.addAll(getDataFiles(job.getConfiguration(), cl.getOptionValue(Feature.CMD_ARG_INPUT_DIR)));
         }
 
-        String avroSchemaString = getAvroSchema(cl.getOptionValue(Feature.CMD_ARG_AVRO_SCHEMA_FILE), job.getConfiguration());
+        String avroSchemaString;
+        if (cl.hasOption(Feature.CMD_ARG_AVRO_SCHEMA_FILE)) {
+            avroSchemaString = getAvroSchema(
+                cl.getOptionValue(Feature.CMD_ARG_AVRO_SCHEMA_FILE), job.getConfiguration());
+        } else {
+            avroSchemaString = cl.getOptionValue(Feature.CMD_ARG_AVRO_SCHEMA);
+        }
         Schema avroSchema = new Schema.Parser().parse(avroSchemaString);
 
         // At this point we have the version of sstable that we can use for this run
@@ -194,5 +209,6 @@ public class SSTableExport extends Configured implements Tool {
         public static final String CMD_ARG_INPUT_FILE = "input";
         public static final String CMD_ARG_OUTPUT_DIR = "output";
         public static final String CMD_ARG_AVRO_SCHEMA_FILE = "avroSchemaFile";
+        public static final String CMD_ARG_AVRO_SCHEMA = "avroSchema";
     }
 }
