@@ -135,9 +135,9 @@ public class Aegisthus extends Configured implements Tool {
         }
         LOG.info("Total size of input files: {}", inputSize);
         long maxSizePerReducer = conf.getLong(Feature.CONF_MAX_SIZE_PER_REDUCER, 0);
-        int reduces = conf.getInt("mapred.job.reduces", 1);
+        int reduces = conf.getInt("mapreduce.job.reduces", 1);
         if (maxSizePerReducer > 0) {
-            conf.setInt("mapred.job.reduces", Math.max((int) (1 + inputSize / maxSizePerReducer), reduces));
+            conf.setInt("mapreduce.job.reduces", Math.max((int) (1 + inputSize / maxSizePerReducer), reduces));
         }
         if (conf.getBoolean(Feature.CONF_ENFORCE_COMPRESSION, false)) {
             compressedGlobs.retainAll(globs);
@@ -215,7 +215,7 @@ public class Aegisthus extends Configured implements Tool {
         if (cl.hasOption(Feature.CMD_ARG_INPUT_DIR)) {
             paths.addAll(getDataFiles(configuration, cl.getOptionValue(Feature.CMD_ARG_INPUT_DIR)));
             // reset this because it may have changed
-            job.setNumReduceTasks(configuration.getInt("mapred.job.reduces", 1));
+            job.setNumReduceTasks(configuration.getInt("mapreduce.job.reduces", 1));
         }
         LOG.info("Processing paths: {}", paths);
 
