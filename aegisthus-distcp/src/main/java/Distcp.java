@@ -246,8 +246,10 @@ public class Distcp extends Configured implements Tool {
 					public List<String> call() throws IOException {
 						FileStatus[] files = path.getFileSystem(conf).globStatus(path);
 						List<String> curInputs = new ArrayList<String>();
-						for (FileStatus file : files) {
-							curInputs.add(file.getPath().toString());
+						if (files != null) {
+							for (FileStatus file : files) {
+								curInputs.add(file.getPath().toString());
+							}
 						}
 						return curInputs;
 					}
