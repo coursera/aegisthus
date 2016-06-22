@@ -66,6 +66,10 @@ public class AegisthusKey implements WritableComparable<AegisthusKey> {
         return aegisthusKey;
     }
 
+    public Long getTimestamp() {
+        return timestamp;
+    }
+
     @Override
     public int compareTo(@Nonnull AegisthusKey other) {
         return this.key.compareTo(other.key);

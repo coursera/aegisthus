@@ -349,6 +349,12 @@ public class Aegisthus extends Configured implements Tool {
          * skipping corrupted files, and the like; make sure to account for these when setting this value.
          */
         public static final String CONF_MAX_SIZE_PER_REDUCER = "aegisthus.max_size_per_reducer";
+        /**
+         * If specified, ignores keys that have a timestamp before the cutoff. Useful for delta loads on nodes
+         * that were just spun up and therefore had a bunch of old tables copied to them for load balancing.
+         * Reminder: This timestamp is in microseconds.
+         */
+        public static final String CONF_CUTOFF_TIMESTAMP = "aegisthus.cutoff_timestamp";
 
         // Coursera-specific
         /**

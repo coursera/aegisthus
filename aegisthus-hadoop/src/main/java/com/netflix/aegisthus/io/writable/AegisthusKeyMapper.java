@@ -41,6 +41,10 @@ public class AegisthusKeyMapper extends Mapper<AegisthusKey, AtomWritable, Aegis
                 }
                 if (!matches) return;
             }
+
+            long cutoffTimestamp = context.getConfiguration().getLong(Aegisthus.Feature.CONF_CUTOFF_TIMESTAMP, 0L);
+            if (key.getTimestamp() != null && key.getTimestamp() < cutoffTimestamp) return;
+
             context.write(key, value);
         } catch (MarshalException | IllegalArgumentException ignored) {
             // don't emit key
