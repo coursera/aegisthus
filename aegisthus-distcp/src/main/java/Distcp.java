@@ -124,11 +124,6 @@ public class Distcp extends Configured implements Tool {
 				.hasArg()
 				.create(OPT_MANIFEST_IN));
 		opts.addOption(OptionBuilder
-				.withArgName(OPT_MANIFEST_IN)
-				.withDescription("a manifest of the files to be copied")
-				.hasArg()
-				.create(OPT_MANIFEST_IN));
-		opts.addOption(OptionBuilder
 				.withArgName(OPT_MANIFEST_OUT)
 				.withDescription("write out a manifest file of movement")
 				.create(OPT_MANIFEST_OUT));
@@ -228,68 +223,70 @@ public class Distcp extends Configured implements Tool {
 		}
 	}
 
-	protected int setupInput(Job job, Path inputPath, String[] inputFiles, String manifestPath) throws Exception {
-		int size = 0;
-		if (manifestPath == null) {
-			LOG.info("Setting up input");
-			final Configuration conf = job.getConfiguration();
-			FileSystem fs = inputPath.getFileSystem(conf);
-			DataOutputStream dos = fs.create(inputPath);
-
-			final List<String> inputs = new ArrayList<String>();
-			final ExecutorService executor = Executors.newFixedThreadPool(inputFiles.length);
-			final List<Future<List<String>>> inputFutures = new ArrayList<Future<List<String>>>();
-
-			for (String inputFile : inputFiles) {
-				final Path path = new Path(cleanS3(inputFile));
-				inputFutures.add(executor.submit(new Callable<List<String>>() {
-					public List<String> call() throws IOException {
-						FileStatus[] files = path.getFileSystem(conf).globStatus(path);
-						List<String> curInputs = new ArrayList<String>();
-						if (files != null) {
-							for (FileStatus file : files) {
-								curInputs.add(file.getPath().toString());
-							}
-						}
-						return curInputs;
-					}
-				}));
-			}
-			for (Future<List<String>> inputFuture : inputFutures) {
-				inputs.addAll(inputFuture.get());
-			}
-			executor.shutdown();
-
-			List<FileStatus> files = Lists.newArrayList(DirectoryWalker
-					.with(conf)
-					.addAll(inputs)
-					.statuses());
-
-			for (FileStatus file : files) {
-				Path filePath = file.getPath();
-
-				// Secondary indexes have the form <keyspace>-<table>.<index_name>-jb-4-Data.db
-				// while normal files have the form <keyspace>-<table>-jb-4-Data.db .
-				if (filePath.getName().split("\\.").length > 2) {
-					LOG.info("Skipping path " + filePath + " as it appears to be a secondary index");
-					continue;
-				}
-
-				dos.writeBytes(file.getPath().toUri().toString());
-				dos.write('\n');
-				size = size + 1;
-			}
-			dos.close();
-		} else {
-			Utils.copy(new Path(manifestPath), inputPath, false, job.getConfiguration());
-			FileSystem fs = inputPath.getFileSystem(job.getConfiguration());
-			BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(inputPath)));
+	protected int setupInput(Job job, Path inputPath, String[] inputFiles, String manifest) throws Exception {
+		if (manifest != null) {
+			Path manifestPath = new Path(manifest);
+			FileSystem fs = manifestPath.getFileSystem(job.getConfiguration());
+			BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(manifestPath)));
+			ArrayList<String> manifestInputs = new ArrayList<String>();
 			String l;
 			while ((l = br.readLine()) != null) {
-				LOG.info(String.format("inputfile: %s", l));
-				size++;
+				LOG.info(String.format("manifest inputfile: %s", l));
+				manifestInputs.add(l);
 			}
+			inputFiles = manifestInputs.toArray(new String[manifestInputs.size()]);
 		}
+
+		LOG.info("Setting up input");
+		int size = 0;
+		final Configuration conf = job.getConfiguration();
+		FileSystem fs = inputPath.getFileSystem(conf);
+		DataOutputStream dos = fs.create(inputPath);
+
+		final List<String> inputs = new ArrayList<String>();
+		final ExecutorService executor = Executors.newFixedThreadPool(inputFiles.length);
+		final List<Future<List<String>>> inputFutures = new ArrayList<Future<List<String>>>();
+
+		for (String inputFile : inputFiles) {
+			final Path path = new Path(cleanS3(inputFile));
+			inputFutures.add(executor.submit(new Callable<List<String>>() {
+				public List<String> call() throws IOException {
+					FileStatus[] files = path.getFileSystem(conf).globStatus(path);
+					List<String> curInputs = new ArrayList<String>();
+					if (files != null) {
+						for (FileStatus file : files) {
+							curInputs.add(file.getPath().toString());
+						}
+					}
+					return curInputs;
+				}
+			}));
+		}
+		for (Future<List<String>> inputFuture : inputFutures) {
+			inputs.addAll(inputFuture.get());
+		}
+		executor.shutdown();
+
+		List<FileStatus> files = Lists.newArrayList(DirectoryWalker
+				.with(conf)
+				.addAll(inputs)
+				.statuses());
+
+		for (FileStatus file : files) {
+			Path filePath = file.getPath();
+
+			// Secondary indexes have the form <keyspace>-<table>.<index_name>-jb-4-Data.db
+			// while normal files have the form <keyspace>-<table>-jb-4-Data.db .
+			if (filePath.getName().split("\\.").length > 2) {
+				LOG.info("Skipping path " + filePath + " as it appears to be a secondary index");
+				continue;
+			}
+
+			dos.writeBytes(file.getPath().toUri().toString());
+			dos.write('\n');
+			size = size + 1;
+		}
+		dos.close();
 		return size;
 	}
 
