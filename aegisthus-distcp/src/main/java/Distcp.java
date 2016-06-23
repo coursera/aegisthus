@@ -224,6 +224,8 @@ public class Distcp extends Configured implements Tool {
 	}
 
 	protected int setupInput(Job job, Path inputPath, String[] inputFiles, String manifest) throws Exception {
+		LOG.info("Setting up input");
+		String[] inputFilesToCheck;
 		if (manifest != null) {
 			Path manifestPath = new Path(manifest);
 			FileSystem fs = manifestPath.getFileSystem(job.getConfiguration());
@@ -234,20 +236,21 @@ public class Distcp extends Configured implements Tool {
 				LOG.info(String.format("manifest inputfile: %s", l));
 				manifestInputs.add(l);
 			}
-			inputFiles = manifestInputs.toArray(new String[manifestInputs.size()]);
+			inputFilesToCheck = manifestInputs.toArray(new String[manifestInputs.size()]);
+		} else {
+			inputFilesToCheck = inputFiles;
 		}
 
-		LOG.info("Setting up input");
 		int size = 0;
 		final Configuration conf = job.getConfiguration();
 		FileSystem fs = inputPath.getFileSystem(conf);
 		DataOutputStream dos = fs.create(inputPath);
 
 		final List<String> inputs = new ArrayList<String>();
-		final ExecutorService executor = Executors.newFixedThreadPool(inputFiles.length);
+		final ExecutorService executor = Executors.newFixedThreadPool(inputFilesToCheck.length);
 		final List<Future<List<String>>> inputFutures = new ArrayList<Future<List<String>>>();
 
-		for (String inputFile : inputFiles) {
+		for (String inputFile : inputFilesToCheck) {
 			final Path path = new Path(cleanS3(inputFile));
 			inputFutures.add(executor.submit(new Callable<List<String>>() {
 				public List<String> call() throws IOException {
