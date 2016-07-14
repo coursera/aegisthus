@@ -157,17 +157,22 @@ public class CQLMapper extends Mapper<AegisthusKey, AtomWritable, AvroKey<Generi
     }
 
     private void addCqlValueToRecord(GenericRecord record, CFDefinition.Name name, ByteBuffer value) {
-        if (value == null) {
-            record.put(name.name.toString(), null);
-            return;
-        }
-
         AbstractType<?> type = name.type;
-        Object valueDeserialized = type.compose(value);
 
         AbstractType<?> baseType = (type instanceof ReversedType<?>)
                 ? ((ReversedType<?>) type).baseType
                 : type;
+
+        if (value == null) {
+            // LOG.info("Setting {} type {} to null", name.name.toString(), type);
+            if (baseType instanceof BytesType)
+                record.put(name.name.toString(), new byte[0]);
+            else
+                record.put(name.name.toString(), null);
+            return;
+        }
+
+        Object valueDeserialized = type.compose(value);
 
         /* special case some unsupported CQL3 types to Hive types. */
         if (baseType instanceof UUIDType || baseType instanceof TimeUUIDType) {
@@ -183,7 +188,8 @@ public class CQLMapper extends Mapper<AegisthusKey, AtomWritable, AvroKey<Generi
             valueDeserialized = date.getTime();
         }
 
-        //LOG.info("Setting {} type {} to class {}", name.name.toString(), type, valueDeserialized.getClass());
+        // LOG.info("Setting {} type {} to class {}", name.name.toString(), type, valueDeserialized.getClass());
+        // LOG.info(valueDeserialized.toString());
 
         record.put(name.name.toString(), valueDeserialized);
     }
